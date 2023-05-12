@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\MediaWikiServices;
 use MWStake\MediaWiki\ComponentLoader\Bootstrapper;
 
 if ( defined( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION' ) ) {
@@ -14,9 +15,14 @@ Bootstrapper::getInstance()
 		$GLOBALS['wgMWStakeDynamicConfigs'] = [];
 
 		$GLOBALS['wgExtensionFunctions'][] = static function() {
-			$hookContainer = \MediaWiki\MediaWikiServices::getInstance()->getHookContainer();
+			$hookContainer = MediaWikiServices::getInstance()->getHookContainer();
 			$hookContainer->register( 'LoadExtensionSchemaUpdates', static function ( DatabaseUpdater $updater ) {
 				$updater->addExtensionTable( 'mwstake_dynamic_config', __DIR__ . '/db/mwstake_dynamic_config.sql' );
 			} );
+		};
+		// TODO: AFAIK we removed loading of configs from SetupAfterCache hook, why?
+		$GLOBALS['wgHooks']['SetupAfterCache'][] = static function() {
+			$manager = MediaWikiServices::getInstance()->getService( 'MWStakeDynamicConfigManager' );
+			$manager->loadConfigs();
 		};
 	} );

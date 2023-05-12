@@ -2,8 +2,9 @@
 
 namespace MWStake\MediaWiki\Component\DynamicConfig;
 
-use MediaWiki\HookContainer\HookContainer;
+use DateTime;
 use Psr\Log\LoggerInterface;
+use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ILoadBalancer;
 
 class DynamicConfigManager {
@@ -40,21 +41,24 @@ class DynamicConfigManager {
 
 	/**
 	 * @param IDynamicConfig $config
+	 * @param array|null $additionalData
 	 *
 	 * @return bool
 	 */
-	public function storeConfig( IDynamicConfig $config ): bool {
+	public function storeConfig( IDynamicConfig $config, ?array $additionalData = [] ): bool {
 		$key = $config->getKey();
 		if ( !isset( $this->configs[$key] ) ) {
 			$this->logger->error( 'Trying to store config that is not registered: ' . $key );
 			return false;
 		}
-		$serialized = $config->serialize();
+		$serialized = $config->serialize( $additionalData );
 		$db = $this->loadBalancer->getConnection( DB_PRIMARY );
 		$db->startAtomic( __METHOD__ );
 		$this->backup( $config, $db );
 		$this->store( $config, $serialized, $db );
 		$db->endAtomic( __METHOD__ );
+
+		return true;
 	}
 
 	/**
@@ -64,26 +68,25 @@ class DynamicConfigManager {
 		$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
 		$res = $dbr->select(
 			self::TABLE,
-			[ 'mwdc_key AS key', 'mwdc_serialized AS serialized' ],
+			[ 'mwdc_key', 'mwdc_serialized' ],
 			[ 'mwdc_is_active' => 1 ],
-			__METHOD__,
-			[ 'ORDER BY' => 'mwdc_timestamp DESC' ]
+			__METHOD__
 		);
 
 		$this->configData = [];
 		foreach ( $res as $row ) {
-			if ( !isset( $this->configs[$row->key] ) ) {
+			if ( !isset( $this->configs[$row->mwdc_key] ) ) {
 				continue;
 			}
 
-			$config = $this->configs[$row->key];
+			$config = $this->configs[$row->mwdc_key];
 			$this->configData[$config->getKey()] = [
-				'serialized' => $row->serialized,
+				'serialized' => $row->mwdc_serialized,
 				'applied' => false,
 			];
 			$this->logger->debug( 'Loaded config ' . $config->getKey() . ' from database' );
 			if ( $config->shouldAutoApply() ) {
-				$this->doApply( $config, $row->serialized );
+				$this->doApply( $config, $row->mwdc_serialized );
 			}
 		}
 	}
@@ -130,24 +133,24 @@ class DynamicConfigManager {
 		$res = $dbr->select(
 			self::TABLE,
 			[ 'mwdc_timestamp AS timestamp' ],
-			[ 'mwdc_key' => $key, 'mwdc_is_active' => 0 ],
+			[ 'mwdc_key' => $config->getKey(), 'mwdc_is_active' => 0 ],
 			__METHOD__,
 			[ 'ORDER BY' => 'mwdc_timestamp DESC' ]
 		);
 		$backups = [];
 		foreach ( $res as $row ) {
-			$backups[] = \DateTime::createFromFormat( 'YmdHis', $row->timestamp );
+			$backups[] = DateTime::createFromFormat( 'YmdHis', $row->timestamp );
 		}
 		return $backups;
 	}
 
 	/**
 	 * @param IDynamicConfig $config
-	 * @param \DateTime $timestamp
+	 * @param DateTime $timestamp
 	 *
 	 * @return bool
 	 */
-	public function restoreFromBackup( IDynamicConfig $config, \DateTime $timestamp ): bool {
+	public function restoreFromBackup( IDynamicConfig $config, DateTime $timestamp ): bool {
 		$key = $config->getKey();
 		if ( !isset( $this->configs[$key] ) ) {
 			$this->logger->error( 'Trying to restore config that is not registered: ' . $key );
@@ -224,7 +227,7 @@ class DynamicConfigManager {
 	 *
 	 * @return void
 	 */
-	private function backup( IDynamicConfig $config, \IDatabase $db ) {
+	private function backup( IDynamicConfig $config, IDatabase $db ) {
 		$hasActive = $db->selectRow(
 			self::TABLE,
 			[ 'mwdc_key' ],
@@ -241,19 +244,18 @@ class DynamicConfigManager {
 		}
 		$rotationCheck = $db->selectRow(
 			self::TABLE,
-			[ 'COUTN( mwdc_key ) as backup_count' ],
+			[ 'COUNT( mwdc_key ) as backup_count' ],
 			[ 'mwdc_key' => $config->getKey(), 'mwdc_is_active' => 0 ],
 			__METHOD__,
 			[ 'GROUP BY' => 'mwdc_key' ]
 		);
-		if ( $rotationCheck && (int)$rotationCheck->backup_count > 5 ) {
+		if ( $rotationCheck && (int)$rotationCheck->backup_count > 2 ) {
+			// Abstraction function `delete` does not support ORDER BY and LIMIT
+			$sql = 'DELETE FROM ' . self::TABLE . ' WHERE mwdc_key = ' . $db->addQuotes( $config->getKey() )
+				. ' AND mwdc_is_active = 0 ORDER BY mwdc_timestamp ASC LIMIT 1';
 			// Delete oldest backup
-			$db->delete(
-				self::TABLE,
-				[ 'mwdc_key' => $config->getKey(), 'mwdc_is_active' => 0 ],
-				__METHOD__,
-				[ 'ORDER BY' => 'mwdc_timestamp ASC' ,'LIMIT' => 1 ]
-			);
+			$db->query( $sql );
+			error_log( $db->lastQuery() );
 		}
 	}
 
@@ -262,10 +264,11 @@ class DynamicConfigManager {
 	 *
 	 * @param IDynamicConfig $config
 	 * @param string $serialized
+	 * @param IDatabase $db
 	 *
 	 * @return void
 	 */
-	private function store( IDynamicConfig $config, string $serialized, \IDatabase $db ) {
+	private function store( IDynamicConfig $config, string $serialized, IDatabase $db ) {
 		$db->insert(
 			self::TABLE,
 			[

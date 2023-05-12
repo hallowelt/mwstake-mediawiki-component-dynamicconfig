@@ -19,9 +19,11 @@ interface IDynamicConfig {
 	/**
 	 * Read out any necessary config and serialize to be stored in the database
 	 *
+	 * @param array|null $additionalData
+	 *
 	 * @return string
 	 */
-	public function serialize(): string;
+	public function serialize( ?array $additionalData = [] ): string;
 
 	/**
 	 * Whether to call `apply()` automatically when the config is loaded
