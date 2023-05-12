@@ -1,0 +1,50 @@
+{
+	"name": "mwstake/mediawiki-component-dynamicconfig",
+	"description": "Dynamic config manager",
+	"license": "GPL-3.0-only",
+	"authors": [
+		{
+			"name": "BlueSpice",
+			"email": "support@bluespice.com"
+		}
+	],
+	"require": {
+		"composer/installers": "~1.0|~2",
+		"mwstake/mediawiki-componentloader": "~1"
+	},
+	"require-dev": {
+		"jakub-onderka/php-parallel-lint": "1.0.0",
+		"jakub-onderka/php-console-highlighter": "0.4.0",
+		"mediawiki/mediawiki-codesniffer": "29.0.0",
+		"mediawiki/minus-x": "1.0.0",
+		"phpunit/phpunit": "^8.5"
+	},
+	"autoload": {
+		"psr-4": {
+			"MWStake\\MediaWiki\\Component\\DynamicConfig\\": "src/",
+			"MWStake\\MediaWiki\\Component\\DynamicConfig\\Tests\\": "tests/phpunit/"
+		},
+		"files": [
+			"bootstrap.php"
+		]
+	},
+	"scripts": {
+		"phpunit": [
+			"../../../tests/phpunit/phpunit.php -c .phpunit.xml"
+		],
+		"test": [
+			"parallel-lint . --exclude vendor --exclude node_modules",
+			"minus-x check .",
+			"phpcs -sp"
+		],
+		"fix": [
+			"minus-x fix .",
+			"phpcbf"
+		]
+	},
+	"config": {
+		"allow-plugins": {
+			"composer/installers": true
+		}
+	}
+}
