@@ -30,7 +30,7 @@
 	},
 	"scripts": {
 		"phpunit": [
-			"../../../tests/phpunit/phpunit.php -c .phpunit.xml"
+			"php ../../../tests/phpunit/phpunit.php -c .phpunit.xml"
 		],
 		"test": [
 			"parallel-lint . --exclude vendor --exclude node_modules",

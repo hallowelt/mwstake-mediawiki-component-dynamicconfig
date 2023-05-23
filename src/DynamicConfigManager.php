@@ -26,6 +26,9 @@ class DynamicConfigManager {
 	/** @var array */
 	private $configData = [];
 
+	/** @var bool */
+	private $loaded = false;
+
 	/**
 	 * @param ILoadBalancer $loadBalancer
 	 * @param LoggerInterface $logger
@@ -36,22 +39,27 @@ class DynamicConfigManager {
 	) {
 		$this->loadBalancer = $loadBalancer;
 		$this->logger = $logger;
-		$this->configs = $configs;
+		foreach ( $configs as $config ) {
+			$this->configs[$config->getKey()] = $config;
+		}
 	}
 
 	/**
 	 * @param IDynamicConfig $config
 	 * @param array|null $additionalData
+	 * @param string|null $serialized
 	 *
 	 * @return bool
 	 */
-	public function storeConfig( IDynamicConfig $config, ?array $additionalData = [] ): bool {
+	public function storeConfig(
+		IDynamicConfig $config, ?array $additionalData = [], ?string $serialized = null
+	): bool {
 		$key = $config->getKey();
 		if ( !isset( $this->configs[$key] ) ) {
 			$this->logger->error( 'Trying to store config that is not registered: ' . $key );
 			return false;
 		}
-		$serialized = $config->serialize( $additionalData );
+		$serialized = $serialized ?? $config->serialize( $additionalData );
 		$db = $this->loadBalancer->getConnection( DB_PRIMARY );
 		$db->startAtomic( __METHOD__ );
 		$this->backup( $config, $db );
@@ -65,30 +73,50 @@ class DynamicConfigManager {
 	 * @return void
 	 */
 	public function loadConfigs() {
-		$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
-		$res = $dbr->select(
-			self::TABLE,
-			[ 'mwdc_key', 'mwdc_serialized' ],
-			[ 'mwdc_is_active' => 1 ],
-			__METHOD__
-		);
+		if ( !$this->loaded ) {
+			$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
+			$res = $dbr->select(
+				self::TABLE,
+				[ 'mwdc_key', 'mwdc_serialized' ],
+				[ 'mwdc_is_active' => 1 ],
+				__METHOD__
+			);
 
-		$this->configData = [];
-		foreach ( $res as $row ) {
-			if ( !isset( $this->configs[$row->mwdc_key] ) ) {
-				continue;
-			}
+			$this->configData = [];
 
-			$config = $this->configs[$row->mwdc_key];
-			$this->configData[$config->getKey()] = [
-				'serialized' => $row->mwdc_serialized,
-				'applied' => false,
-			];
-			$this->logger->debug( 'Loaded config ' . $config->getKey() . ' from database' );
-			if ( $config->shouldAutoApply() ) {
-				$this->doApply( $config, $row->mwdc_serialized );
+			if ( !$res ) {
+				$res = [];
 			}
+			foreach ( $res as $row ) {
+				if ( !isset( $this->configs[$row->mwdc_key] ) ) {
+					continue;
+				}
+
+				$config = $this->configs[$row->mwdc_key];
+				$this->configData[$config->getKey()] = [
+					'serialized' => $row->mwdc_serialized,
+					'applied' => false,
+				];
+				$this->logger->debug( 'Loaded config ' . $config->getKey() . ' from database' );
+				if ( $config->shouldAutoApply() ) {
+					$this->doApply( $config, $row->mwdc_serialized );
+				}
+			}
+			$this->loaded = true;
 		}
+	}
+
+	/**
+	 * @param IDynamicConfig $config
+	 *
+	 * @return string|null
+	 */
+	public function retrieveRaw( IDynamicConfig $config ): ?string {
+		$this->loadConfigs();
+		if ( !isset( $this->configData[$config->getKey()] ) ) {
+			return null;
+		}
+		return $this->configData[$config->getKey()]['serialized'];
 	}
 
 	/**
@@ -99,6 +127,7 @@ class DynamicConfigManager {
 	 */
 	public function applyConfig( IDynamicConfig $config, bool $forceApply = false ): bool {
 		$key = $config->getKey();
+		$this->loadConfigs();
 		if ( !isset( $this->configData[$key] ) ) {
 			$this->logger->debug( 'Trying to apply config that has no data in database: ' . $key );
 			return false;
@@ -108,6 +137,7 @@ class DynamicConfigManager {
 			return true;
 		}
 		$this->doApply( $this->configs[$key], $this->configData[$key]['serialized'] );
+		return true;
 	}
 
 	/**
@@ -121,6 +151,14 @@ class DynamicConfigManager {
 			return null;
 		}
 		return $this->configs[$key];
+	}
+
+	/**
+	 * @return array
+	 */
+	public function listTypes(): array {
+		$this->loadConfigs();
+		return array_keys( $this->configs );
 	}
 
 	/**
@@ -148,13 +186,13 @@ class DynamicConfigManager {
 	 * @param IDynamicConfig $config
 	 * @param DateTime $timestamp
 	 *
-	 * @return bool
+	 * @throws \Exception
 	 */
-	public function restoreFromBackup( IDynamicConfig $config, DateTime $timestamp ): bool {
+	public function restoreFromBackup( IDynamicConfig $config, DateTime $timestamp ) {
 		$key = $config->getKey();
 		if ( !isset( $this->configs[$key] ) ) {
 			$this->logger->error( 'Trying to restore config that is not registered: ' . $key );
-			return false;
+			throw new \Exception( 'Invalid config specified' );
 		}
 		$db = $this->loadBalancer->getConnection( DB_PRIMARY );
 
@@ -170,7 +208,7 @@ class DynamicConfigManager {
 		);
 		if ( !$hasBackup ) {
 			$this->logger->error( 'Trying to restore config that has no backup: ' . $key );
-			return false;
+			throw new \Exception( 'Invalid backup timestamp' );
 		}
 		$db->startAtomic( __METHOD__ );
 		$db->delete(
@@ -185,8 +223,6 @@ class DynamicConfigManager {
 			__METHOD__
 		);
 		$db->endAtomic( __METHOD__ );
-
-		return true;
 	}
 
 	/**
@@ -224,6 +260,7 @@ class DynamicConfigManager {
 	 * Backup currently active config and rotate backups
 	 *
 	 * @param IDynamicConfig $config
+	 * @param IDatabase $db
 	 *
 	 * @return void
 	 */
@@ -231,17 +268,18 @@ class DynamicConfigManager {
 		$hasActive = $db->selectRow(
 			self::TABLE,
 			[ 'mwdc_key' ],
-			[ 'mwdc_is_active' => 1 ],
+			[ 'mwdc_is_active' => 1, 'mwdc_key' => $config->getKey() ],
 			__METHOD__
 		);
-		if ( $hasActive ) {
-			$db->update(
-				self::TABLE,
-				[ 'mwdc_is_active' => 0 ],
-				[ 'mwdc_key' => $hasActive->mwdc_key ],
-				__METHOD__
-			);
+		if ( !$hasActive ) {
+			return;
 		}
+		$db->update(
+			self::TABLE,
+			[ 'mwdc_is_active' => 0 ],
+			[ 'mwdc_key' => $hasActive->mwdc_key ],
+			__METHOD__
+		);
 		$rotationCheck = $db->selectRow(
 			self::TABLE,
 			[ 'COUNT( mwdc_key ) as backup_count' ],
@@ -255,7 +293,6 @@ class DynamicConfigManager {
 				. ' AND mwdc_is_active = 0 ORDER BY mwdc_timestamp ASC LIMIT 1';
 			// Delete oldest backup
 			$db->query( $sql );
-			error_log( $db->lastQuery() );
 		}
 	}
 

@@ -14,15 +14,21 @@ Bootstrapper::getInstance()
 		$GLOBALS['wgServiceWiringFiles'][] = __DIR__ . '/includes/ServiceWiring.php';
 		$GLOBALS['wgMWStakeDynamicConfigs'] = [];
 
-		$GLOBALS['wgExtensionFunctions'][] = static function() {
+		$GLOBALS['wgExtensionFunctions'][] = static function () {
 			$hookContainer = MediaWikiServices::getInstance()->getHookContainer();
-			$hookContainer->register( 'LoadExtensionSchemaUpdates', static function ( DatabaseUpdater $updater ) {
-				$updater->addExtensionTable( 'mwstake_dynamic_config', __DIR__ . '/db/mwstake_dynamic_config.sql' );
-			} );
+			$hookContainer->register(
+				'LoadExtensionSchemaUpdates',
+				static function ( DatabaseUpdater $updater ) {
+					$updater->addExtensionTable(
+						'mwstake_dynamic_config', __DIR__ . '/db/mwstake_dynamic_config.sql'
+					);
+				} );
 		};
-		// TODO: AFAIK we removed loading of configs from SetupAfterCache hook, why?
-		$GLOBALS['wgHooks']['SetupAfterCache'][] = static function() {
+
+		$GLOBALS['wgHooks']['SetupAfterCache'] = $GLOBALS['wgHooks']['SetupAfterCache'] ?? [];
+		array_unshift( $GLOBALS['wgHooks']['SetupAfterCache'], static function () {
+			// Earliest point we can access services I found
 			$manager = MediaWikiServices::getInstance()->getService( 'MWStakeDynamicConfigManager' );
 			$manager->loadConfigs();
-		};
+		} );
 	} );

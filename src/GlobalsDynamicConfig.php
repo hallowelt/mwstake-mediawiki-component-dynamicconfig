@@ -2,7 +2,7 @@
 
 namespace MWStake\MediaWiki\Component\DynamicConfig;
 
-abstract class GlobalsDynamicSetting implements IDynamicConfig, GlobalsAwareDynamicConfig {
+abstract class GlobalsDynamicConfig implements IDynamicConfig, GlobalsAwareDynamicConfig {
 	/** @var array */
 	private $mwGlobals;
 
@@ -21,7 +21,7 @@ abstract class GlobalsDynamicSetting implements IDynamicConfig, GlobalsAwareDyna
 	 * @return bool
 	 */
 	public function apply( string $serialized ) : bool {
-		$parsed = json_decode( $serialized, true );
+		$parsed = unserialize( $serialized );
 		if ( $parsed === null ) {
 			return false;
 		}
@@ -43,7 +43,7 @@ abstract class GlobalsDynamicSetting implements IDynamicConfig, GlobalsAwareDyna
 		foreach ( $this->getSupportedGlobals() as $global ) {
 			$serialized[$global] = $this->serializeGlobal( $this->mwGlobals[$global] ?? null );
 		}
-		return json_encode( $serialized );
+		return serialize( $serialized );
 	}
 
 	/**
@@ -82,7 +82,9 @@ abstract class GlobalsDynamicSetting implements IDynamicConfig, GlobalsAwareDyna
 	 */
 	protected function serializeGlobal( $param ) {
 		if ( !is_array( $param ) && !is_string( $param ) ) {
-			throw new \InvalidArgumentException( 'Cannot natively serialize. Override \'serializeGlobal\' function' );
+			throw new \InvalidArgumentException(
+				'Cannot natively serialize. Override \'serializeGlobal\' function'
+			);
 		}
 		return $param;
 	}
