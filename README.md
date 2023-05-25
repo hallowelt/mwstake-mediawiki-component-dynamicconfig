@@ -51,13 +51,13 @@ deleting the oldest one.
 #### From CLI
 
 ```bash
-  // List available config types
+  # List available config types
   php vendor/mwstake/mediawiki-component-dynamicconfig/maintenance/restoreFromBackup.php --list-types
 
-  // List avilable backups for a type
+  # List avilable backups for a type
   php vendor/mwstake/mediawiki-component-dynamicconfig/maintenance/restoreFromBackup.php --list-backups --config={key}
 
-  // Restore a backup (timestamp in YmdHis format)
+  # Restore a backup (timestamp in YmdHis format)
   php vendor/mwstake/mediawiki-component-dynamicconfig/maintenance/restoreFromBackup.php --backup-timestamp=20230523104627 --config={key}
 ```
 
@@ -65,6 +65,6 @@ Note: This will assume component is installed in the root `vendor` directory. If
 argument of the script.
 
 ```bash
-  // List available config types
+  # List available config types
   php vendor/mwstake/mediawiki-component-dynamicconfig/maintenance/restoreFromBackup.php some/path/Maintenance.php --list-types
 ```
