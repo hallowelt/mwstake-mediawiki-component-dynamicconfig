@@ -2,18 +2,7 @@
 
 namespace MWStake\MediaWiki\Component\DynamicConfig;
 
-abstract class GlobalsDynamicConfig implements IDynamicConfig, GlobalsAwareDynamicConfig {
-	/** @var array */
-	private $mwGlobals;
-
-	/**
-	 * @param array &$globals
-	 *
-	 * @return mixed|void
-	 */
-	public function setMwGlobals( array &$globals ) {
-		$this->mwGlobals = &$globals;
-	}
+abstract class GlobalsDynamicConfig implements IDynamicConfig {
 
 	/**
 	 * @param string $serialized
@@ -27,7 +16,7 @@ abstract class GlobalsDynamicConfig implements IDynamicConfig, GlobalsAwareDynam
 		}
 		foreach ( $parsed as $global => $value ) {
 			$globalValue = $this->unserializeGlobalValue( $value );
-			$this->mwGlobals[$global] = $globalValue;
+			$GLOBALS[$global] = $globalValue;
 		}
 
 		return true;
@@ -52,7 +41,7 @@ abstract class GlobalsDynamicConfig implements IDynamicConfig, GlobalsAwareDynam
 	 * @return mixed|null
 	 */
 	protected function getMwGlobal( string $name ) {
-		return $this->mwGlobals[$name] ?? null;
+		return $GLOBALS[$name] ?? null;
 	}
 
 	/**
@@ -62,7 +51,7 @@ abstract class GlobalsDynamicConfig implements IDynamicConfig, GlobalsAwareDynam
 	 * @return void
 	 */
 	public function setMwGlobal( string $name, $value ) {
-		$this->mwGlobals[$name] = $value;
+		$GLOBALS[$name] = $value;
 	}
 
 	/**

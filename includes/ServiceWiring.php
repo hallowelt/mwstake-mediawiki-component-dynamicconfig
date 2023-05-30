@@ -2,7 +2,6 @@
 
 use MediaWiki\MediaWikiServices;
 use MWStake\MediaWiki\Component\DynamicConfig\DynamicConfigManager;
-use MWStake\MediaWiki\Component\DynamicConfig\GlobalsAwareDynamicConfig;
 use MWStake\MediaWiki\Component\DynamicConfig\IDynamicConfig;
 
 return [
@@ -32,9 +31,6 @@ return [
 					'object_class' => $object ? get_class( $object ) : null
 				] );
 				throw new Exception( 'Invalid object for dynamic config' );
-			}
-			if ( $config instanceof GlobalsAwareDynamicConfig ) {
-				$config->setMwGlobals( $GLOBALS );
 			}
 		}
 
