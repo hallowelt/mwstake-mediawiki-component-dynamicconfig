@@ -74,7 +74,11 @@ class DynamicConfigManager {
 	 */
 	public function loadConfigs() {
 		if ( !$this->loaded ) {
+			// Assert database
 			$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
+			if ( !$dbr->tableExists( 'mwstake_dynamic_config' ) ) {
+				return;
+			}
 			$res = $dbr->select(
 				self::TABLE,
 				[ 'mwdc_key', 'mwdc_serialized' ],

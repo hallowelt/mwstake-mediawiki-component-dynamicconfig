@@ -7,7 +7,7 @@ if ( defined( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION' ) ) {
 	return;
 }
 
-define( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION', '1.0.4' );
+define( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION', '1.0.5' );
 
 Bootstrapper::getInstance()
 	->register( 'dynamicconfig', function () {
@@ -22,11 +22,6 @@ Bootstrapper::getInstance()
 
 		$GLOBALS['wgHooks']['SetupAfterCache'] = $GLOBALS['wgHooks']['SetupAfterCache'] ?? [];
 		array_unshift( $GLOBALS['wgHooks']['SetupAfterCache'], static function () {
-			// Assert database
-			$db = wfGetDB( DB_REPLICA );
-			if ( !$db->tableExists( 'mwstake_dynamic_config' ) ) {
-				return;
-			}
 			// Earliest point we can access services I found
 			$manager = MediaWikiServices::getInstance()->getService( 'MWStakeDynamicConfigManager' );
 			$manager->loadConfigs();
