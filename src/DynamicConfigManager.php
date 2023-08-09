@@ -293,7 +293,8 @@ class DynamicConfigManager {
 		);
 		if ( $rotationCheck && (int)$rotationCheck->backup_count > 2 ) {
 			// Abstraction function `delete` does not support ORDER BY and LIMIT
-			$sql = 'DELETE FROM ' . self::TABLE . ' WHERE mwdc_key = ' . $db->addQuotes( $config->getKey() )
+			$sql = 'DELETE FROM ' . $db->tablePrefix() . self::TABLE .
+				' WHERE mwdc_key = ' . $db->addQuotes( $config->getKey() )
 				. ' AND mwdc_is_active = 0 ORDER BY mwdc_timestamp ASC LIMIT 1';
 			// Delete oldest backup
 			$db->query( $sql );
