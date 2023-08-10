@@ -7,7 +7,7 @@ if ( defined( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION' ) ) {
 	return;
 }
 
-define( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION', '1.0.6' );
+define( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION', '1.0.7' );
 
 Bootstrapper::getInstance()
 	->register( 'dynamicconfig', function () {
@@ -17,6 +17,11 @@ Bootstrapper::getInstance()
 		$GLOBALS['wgHooks']['LoadExtensionSchemaUpdates'][] = static function ( DatabaseUpdater $updater ) {
 			$updater->addExtensionTable(
 				'mwstake_dynamic_config', __DIR__ . '/db/mwstake_dynamic_config.sql'
+			);
+			$updater->modifyExtensionField(
+				'mwstake_dynamic_config',
+				'mwdc_serialized',
+				__DIR__ . '/db/mwstake_dynamic_config_serialized_patch.sql'
 			);
 		};
 
