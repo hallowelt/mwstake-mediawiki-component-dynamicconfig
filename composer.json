@@ -4,8 +4,9 @@
 	"license": "GPL-3.0-only",
 	"authors": [
 		{
-			"name": "BlueSpice",
-			"email": "support@bluespice.com"
+			"name": "HalloWelt! GmbH",
+			"email": "info@hallowelt.com",
+			"homepage": "http://www.hallowelt.com"
 		}
 	],
 	"require": {
