@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\Installer\DatabaseUpdater;
 use MediaWiki\MediaWikiServices;
 use MWStake\MediaWiki\ComponentLoader\Bootstrapper;
 
@@ -15,8 +16,9 @@ Bootstrapper::getInstance()
 		$GLOBALS['wgMWStakeDynamicConfigs'] = [];
 
 		$GLOBALS['wgHooks']['LoadExtensionSchemaUpdates'][] = static function ( DatabaseUpdater $updater ) {
+			$dbType = $updater->getDB()->getType();
 			$updater->addExtensionTable(
-				'mwstake_dynamic_config', __DIR__ . '/db/mwstake_dynamic_config.sql'
+				'mwstake_dynamic_config', __DIR__ . "/db/$dbType/mwstake_dynamic_config.sql"
 			);
 			$updater->modifyExtensionField(
 				'mwstake_dynamic_config',
