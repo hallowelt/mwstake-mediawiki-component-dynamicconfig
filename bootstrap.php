@@ -1,6 +1,5 @@
 <?php
 
-use MediaWiki\Installer\DatabaseUpdater;
 use MediaWiki\MediaWikiServices;
 use MWStake\MediaWiki\ComponentLoader\Bootstrapper;
 
@@ -8,7 +7,7 @@ if ( defined( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION' ) ) {
 	return;
 }
 
-define( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION', '1.0.8' );
+define( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION', '1.0.9' );
 
 Bootstrapper::getInstance()
 	->register( 'dynamicconfig', static function () {
