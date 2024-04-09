@@ -23,7 +23,7 @@ Bootstrapper::getInstance()
 			$updater->modifyExtensionField(
 				'mwstake_dynamic_config',
 				'mwdc_serialized',
-				__DIR__ . '/db/mwstake_dynamic_config_serialized_patch.sql'
+				__DIR__ . "/db/$dbType/mwstake_dynamic_config_serialized_patch.sql"
 			);
 		};
 
