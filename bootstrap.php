@@ -10,7 +10,7 @@ if ( defined( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION' ) ) {
 define( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION', '1.0.8' );
 
 Bootstrapper::getInstance()
-	->register( 'dynamicconfig', function () {
+	->register( 'dynamicconfig', static function () {
 		$GLOBALS['wgServiceWiringFiles'][] = __DIR__ . '/includes/ServiceWiring.php';
 		$GLOBALS['wgMWStakeDynamicConfigs'] = [];
 

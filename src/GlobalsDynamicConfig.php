@@ -9,7 +9,7 @@ abstract class GlobalsDynamicConfig implements IDynamicConfig {
 	 *
 	 * @return bool
 	 */
-	public function apply( string $serialized ) : bool {
+	public function apply( string $serialized ): bool {
 		$parsed = unserialize( $serialized );
 		if ( $parsed === null ) {
 			return false;
@@ -27,7 +27,7 @@ abstract class GlobalsDynamicConfig implements IDynamicConfig {
 	 *
 	 * @return string
 	 */
-	public function serialize( ?array $additionalData = [] ) : string {
+	public function serialize( ?array $additionalData = [] ): string {
 		$serialized = [];
 		foreach ( $this->getSupportedGlobals() as $global ) {
 			$serialized[$global] = $this->serializeGlobal( $this->mwGlobals[$global] ?? null );
