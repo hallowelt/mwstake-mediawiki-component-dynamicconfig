@@ -1,0 +1,78 @@
+{
+	"before": {
+		"name": "mwstake_dynamic_config",
+		"columns": [
+			{
+				"name": "mwdc_key",
+				"type": "binary",
+				"options": {
+					"length": 255,
+					"notnull": true
+				}
+			},
+			{
+				"name": "mwdc_serialized",
+				"type": "text",
+				"options": {
+					"notnull": false
+				}
+			},
+			{
+				"name": "mwdc_timestamp",
+				"type": "mwtimestamp",
+				"options": {
+					"notnull": false
+				}
+			},
+			{
+				"name": "mwdc_is_active",
+				"type": "mwtinyint",
+				"options": {
+					"length": 1,
+					"notnull": true,
+					"default": 1
+				}
+			}
+		],
+		"indexes": [],
+		"pk": []
+	},
+	"after": {
+		"name": "mwstake_dynamic_config",
+		"columns": [
+			{
+				"name": "mwdc_key",
+				"type": "binary",
+				"options": {
+					"length": 255,
+					"notnull": true
+				}
+			},
+			{
+				"name": "mwdc_serialized",
+				"type": "blob",
+				"options": {
+					"notnull": false
+				}
+			},
+			{
+				"name": "mwdc_timestamp",
+				"type": "mwtimestamp",
+				"options": {
+					"notnull": false
+				}
+			},
+			{
+				"name": "mwdc_is_active",
+				"type": "mwtinyint",
+				"options": {
+					"length": 1,
+					"notnull": true,
+					"default": 1
+				}
+			}
+		],
+		"indexes": [],
+		"pk": []
+	}
+}
