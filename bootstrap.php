@@ -7,7 +7,7 @@ if ( defined( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION' ) ) {
 	return;
 }
 
-define( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION', '1.0.9' );
+define( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION', '1.0.10' );
 
 Bootstrapper::getInstance()
 	->register( 'dynamicconfig', static function () {
@@ -17,13 +17,14 @@ Bootstrapper::getInstance()
 		$GLOBALS['wgExtensionFunctions'][] = static function() {
 			$hookContainer = MediaWikiServices::getInstance()->getHookContainer();
 			$hookContainer->register( 'LoadExtensionSchemaUpdates', static function ( DatabaseUpdater $updater ) {
+				$dbType = $updater->getDB()->getType();
 				$updater->addExtensionTable(
-					'mwstake_dynamic_config', __DIR__ . '/db/mwstake_dynamic_config.sql'
+					'mwstake_dynamic_config', __DIR__ . "/db/$dbType/mwstake_dynamic_config.sql"
 				);
 				$updater->modifyExtensionField(
 					'mwstake_dynamic_config',
 					'mwdc_serialized',
-					__DIR__ . '/db/mwstake_dynamic_config_serialized_patch.sql'
+					__DIR__ . "/db/$dbType/mwstake_dynamic_config_serialized_patch.sql"
 				);
 			} );
 			$hookContainer->register( 'SetupAfterCache', static function () {
