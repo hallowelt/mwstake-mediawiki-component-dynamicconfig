@@ -297,7 +297,7 @@ class DynamicConfigManager {
 				' WHERE mwdc_key = ' . $db->addQuotes( $config->getKey() )
 				. ' AND mwdc_is_active = 0 ORDER BY mwdc_timestamp ASC LIMIT 1';
 			// Delete oldest backup
-			$db->query( $sql );
+			$db->query( $sql, __METHOD__ );
 		}
 	}
 
