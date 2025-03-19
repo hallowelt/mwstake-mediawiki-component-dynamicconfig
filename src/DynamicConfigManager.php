@@ -4,6 +4,7 @@ namespace MWStake\MediaWiki\Component\DynamicConfig;
 
 use DateTime;
 use Psr\Log\LoggerInterface;
+use Wikimedia\Rdbms\DBConnRef;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\ILoadBalancer;
 
@@ -75,8 +76,9 @@ class DynamicConfigManager {
 	public function loadConfigs() {
 		if ( !$this->loaded ) {
 			// Assert database
+			/** @var DBConnRef $dbr */
 			$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
-			if ( !$dbr->tableExists( 'mwstake_dynamic_config' ) ) {
+			if ( !$dbr->tableExists( 'mwstake_dynamic_config', __METHOD__ ) ) {
 				return;
 			}
 			$res = $dbr->select(
