@@ -1,5 +1,7 @@
 <?php
 
+use MediaWiki\Maintenance\Maintenance;
+
 /**
  * @return string
  */
