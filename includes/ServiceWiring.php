@@ -35,7 +35,8 @@ return [
 		}
 
 		return new DynamicConfigManager(
-			$services->getDBLoadBalancer(),
+			$services->getConnectionProvider(),
+			$services->getObjectCacheFactory(),
 			$logger,
 			$configObjects
 		);
