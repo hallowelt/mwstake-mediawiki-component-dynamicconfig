@@ -3,25 +3,25 @@
 namespace MWStake\MediaWiki\Component\DynamicConfig;
 
 use DateTime;
+use ObjectCacheFactory;
 use Psr\Log\LoggerInterface;
 use Wikimedia\Rdbms\DBConnRef;
+use Wikimedia\Rdbms\IconnectionProvider;
 use Wikimedia\Rdbms\IDatabase;
-use Wikimedia\Rdbms\ILoadBalancer;
 
 class DynamicConfigManager {
 	private const TABLE = 'mwstake_dynamic_config';
 
-	/**
-	 * @var ILoadBalancer
-	 */
-	private $loadBalancer;
+	/** @var IConnectionProvider */
+	private $connectionProvider;
+
+	/** @var ObjectCacheFactory */
+	private $objectCacheFactory;
 
 	/** @var LoggerInterface */
 	private $logger;
 
-	/**
-	 * @var IDynamicConfig[]
-	 */
+	/** @var IDynamicConfig[] */
 	private $configs;
 
 	/** @var array */
@@ -31,14 +31,17 @@ class DynamicConfigManager {
 	private $loaded = false;
 
 	/**
-	 * @param ILoadBalancer $loadBalancer
+	 * @param IConnectionProvider $connectionProvider
+	 * @param ObjectCacheFactory $objectCacheFactory
 	 * @param LoggerInterface $logger
 	 * @param IDynamicConfig[] $configs
 	 */
 	public function __construct(
-		ILoadBalancer $loadBalancer, LoggerInterface $logger, array $configs
+		IconnectionProvider $connectionProvider, ObjectCacheFactory $objectCacheFactory,
+		LoggerInterface $logger, array $configs
 	) {
-		$this->loadBalancer = $loadBalancer;
+		$this->connectionProvider = $connectionProvider;
+		$this->objectCacheFactory = $objectCacheFactory;
 		$this->logger = $logger;
 		foreach ( $configs as $config ) {
 			$this->configs[$config->getKey()] = $config;
@@ -61,11 +64,11 @@ class DynamicConfigManager {
 			return false;
 		}
 		$serialized = $serialized ?? $config->serialize( $additionalData );
-		$db = $this->loadBalancer->getConnection( DB_PRIMARY );
-		$db->startAtomic( __METHOD__ );
-		$this->backup( $config, $db );
-		$this->store( $config, $serialized, $db );
-		$db->endAtomic( __METHOD__ );
+		$dbw = $this->connectionProvider->getPrimaryDatabase();
+		$dbw->startAtomic( __METHOD__ );
+		$this->backup( $config, $dbw );
+		$this->store( $config, $serialized, $dbw );
+		$dbw->endAtomic( __METHOD__ );
 
 		return true;
 	}
@@ -75,41 +78,61 @@ class DynamicConfigManager {
 	 */
 	public function loadConfigs() {
 		if ( !$this->loaded ) {
-			// Assert database
-			/** @var DBConnRef $dbr */
-			$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
-			if ( !$dbr->tableExists( 'mwstake_dynamic_config', __METHOD__ ) ) {
-				return;
-			}
-			$res = $dbr->select(
-				self::TABLE,
-				[ 'mwdc_key', 'mwdc_serialized' ],
-				[ 'mwdc_is_active' => 1 ],
-				__METHOD__
-			);
-
+			$activeConfigs = $this->getActiveConfigs();
 			$this->configData = [];
 
-			if ( !$res ) {
-				$res = [];
-			}
-			foreach ( $res as $row ) {
-				if ( !isset( $this->configs[$row->mwdc_key] ) ) {
+			foreach ( $activeConfigs as $key => $serialized ) {
+				if ( !isset( $this->configs[$key] ) ) {
 					continue;
 				}
 
-				$config = $this->configs[$row->mwdc_key];
+				$config = $this->configs[$key];
 				$this->configData[$config->getKey()] = [
-					'serialized' => $row->mwdc_serialized,
+					'serialized' => $serialized,
 					'applied' => false,
 				];
+
 				$this->logger->debug( 'Loaded config ' . $config->getKey() . ' from database' );
 				if ( $config->shouldAutoApply() ) {
-					$this->doApply( $config, $row->mwdc_serialized );
+					$this->doApply( $config, $serialized );
 				}
 			}
 			$this->loaded = true;
 		}
+	}
+
+	/**
+	 * @return array [ mwdc_key => mwdc_serialized ]
+	 */
+	private function getActiveConfigs() {
+		$objectCache = $this->objectCacheFactory->getLocalServerInstance();
+		$fname = __METHOD__;
+
+		return $objectCache->getWithSetCallback(
+			$objectCache->makeKey( 'mwscomponentdynamicconfig-getActiveConfigs' ),
+			$objectCache::TTL_SECOND,
+			function () use ( $fname ) {
+				$data = [];
+				/** @var DBConnRef $dbr */
+				$dbr = $this->connectionProvider->getReplicaDatabase();
+				if ( !$dbr->tableExists( self::TABLE, $fname ) ) {
+					return $data;
+				}
+
+				$res = $dbr->newSelectQueryBuilder()
+					->table( self::TABLE )
+					->fields( [ 'mwdc_key', 'mwdc_serialized' ] )
+					->where( [ 'mwdc_is_active' => 1 ] )
+					->caller( $fname )
+					->fetchResultSet();
+
+				foreach ( $res as $row ) {
+					$data[ $row->mwdc_key ] = $row->mwdc_serialized;
+				}
+
+				return $data;
+			}
+		);
 	}
 
 	/**
@@ -173,7 +196,7 @@ class DynamicConfigManager {
 	 * @return array
 	 */
 	public function listBackups( IDynamicConfig $config ) {
-		$dbr = $this->loadBalancer->getConnection( DB_REPLICA );
+		$dbr = $this->connectionProvider->getReplicaDatabase();
 		$res = $dbr->select(
 			self::TABLE,
 			[ 'mwdc_timestamp AS timestamp' ],
@@ -200,9 +223,9 @@ class DynamicConfigManager {
 			$this->logger->error( 'Trying to restore config that is not registered: ' . $key );
 			throw new \Exception( 'Invalid config specified' );
 		}
-		$db = $this->loadBalancer->getConnection( DB_PRIMARY );
+		$dbw = $this->connectionProvider->getPrimaryDatabase();
 
-		$hasBackup = $db->selectField(
+		$hasBackup = $dbw->selectField(
 			self::TABLE,
 			'mwdc_key',
 			[
@@ -216,19 +239,19 @@ class DynamicConfigManager {
 			$this->logger->error( 'Trying to restore config that has no backup: ' . $key );
 			throw new \Exception( 'Invalid backup timestamp' );
 		}
-		$db->startAtomic( __METHOD__ );
-		$db->delete(
+		$dbw->startAtomic( __METHOD__ );
+		$dbw->delete(
 			self::TABLE,
 			[ 'mwdc_key' => $key, 'mwdc_is_active' => 1 ],
 			__METHOD__
 		);
-		$db->update(
+		$dbw->update(
 			self::TABLE,
 			[ 'mwdc_is_active' => 1 ],
 			[ 'mwdc_key' => $key, 'mwdc_timestamp' => $timestamp->format( 'YmdHis' ) ],
 			__METHOD__
 		);
-		$db->endAtomic( __METHOD__ );
+		$dbw->endAtomic( __METHOD__ );
 	}
 
 	/**
@@ -238,8 +261,8 @@ class DynamicConfigManager {
 	 * @return bool
 	 */
 	public function clearConfig( string $key ): bool {
-		$db = $this->loadBalancer->getConnection( DB_PRIMARY );
-		return $db->delete(
+		$dbw = $this->connectionProvider->getPrimaryDatabase();
+		return $dbw->delete(
 			self::TABLE,
 			[ 'mwdc_key' => $key ],
 			__METHOD__
@@ -266,12 +289,12 @@ class DynamicConfigManager {
 	 * Backup currently active config and rotate backups
 	 *
 	 * @param IDynamicConfig $config
-	 * @param IDatabase $db
+	 * @param IDatabase $dbw
 	 *
 	 * @return void
 	 */
-	private function backup( IDynamicConfig $config, IDatabase $db ) {
-		$hasActive = $db->selectRow(
+	private function backup( IDynamicConfig $config, IDatabase $dbw ) {
+		$hasActive = $dbw->selectRow(
 			self::TABLE,
 			[ 'mwdc_key' ],
 			[ 'mwdc_is_active' => 1, 'mwdc_key' => $config->getKey() ],
@@ -280,13 +303,13 @@ class DynamicConfigManager {
 		if ( !$hasActive ) {
 			return;
 		}
-		$db->update(
+		$dbw->update(
 			self::TABLE,
 			[ 'mwdc_is_active' => 0 ],
 			[ 'mwdc_key' => $hasActive->mwdc_key ],
 			__METHOD__
 		);
-		$rotationCheck = $db->selectRow(
+		$rotationCheck = $dbw->selectRow(
 			self::TABLE,
 			[ 'COUNT( mwdc_key ) as backup_count' ],
 			[ 'mwdc_key' => $config->getKey(), 'mwdc_is_active' => 0 ],
@@ -295,11 +318,11 @@ class DynamicConfigManager {
 		);
 		if ( $rotationCheck && (int)$rotationCheck->backup_count > 2 ) {
 			// Abstraction function `delete` does not support ORDER BY and LIMIT
-			$sql = 'DELETE FROM ' . $db->tablePrefix() . self::TABLE .
-				' WHERE mwdc_key = ' . $db->addQuotes( $config->getKey() )
+			$sql = 'DELETE FROM ' . $dbw->tablePrefix() . self::TABLE .
+				' WHERE mwdc_key = ' . $dbw->addQuotes( $config->getKey() )
 				. ' AND mwdc_is_active = 0 ORDER BY mwdc_timestamp ASC LIMIT 1';
 			// Delete oldest backup
-			$db->query( $sql, __METHOD__ );
+			$dbw->query( $sql, __METHOD__ );
 		}
 	}
 
@@ -308,17 +331,17 @@ class DynamicConfigManager {
 	 *
 	 * @param IDynamicConfig $config
 	 * @param string $serialized
-	 * @param IDatabase $db
+	 * @param IDatabase $dbw
 	 *
 	 * @return void
 	 */
-	private function store( IDynamicConfig $config, string $serialized, IDatabase $db ) {
-		$db->insert(
+	private function store( IDynamicConfig $config, string $serialized, IDatabase $dbw ) {
+		$dbw->insert(
 			self::TABLE,
 			[
 				'mwdc_key' => $config->getKey(),
 				'mwdc_serialized' => $serialized,
-				'mwdc_timestamp' => $db->timestamp(),
+				'mwdc_timestamp' => $dbw->timestamp(),
 				'mwdc_is_active' => 1,
 			],
 			__METHOD__

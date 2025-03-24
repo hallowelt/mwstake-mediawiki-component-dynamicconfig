@@ -5,6 +5,10 @@ It is primarely meant to replace `config` directory in BlueSpiceFoundation and c
 It can be used to store any number of configurations, basically everything that goes into `LocalSettings.php`, except for
 core configs, like DB connection and similar.
 
+## Compatibility
+- `2.0.x` -> MediaWiki 1.43
+- `1.0.x` -> MediaWiki 1.39
+
 ## Registering configs
 - Implement a class that implements `MWStake\MediaWiki\Component\DynamicConfig\IDynamicConfig` interface.
 - Use `MWStakeDynamicConfigRegisterConfigs` Hook to register your configs.
