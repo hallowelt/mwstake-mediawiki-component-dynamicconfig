@@ -70,6 +70,9 @@ class DynamicConfigManager {
 		$this->store( $config, $serialized, $dbw );
 		$dbw->endAtomic( __METHOD__ );
 
+		$objectCache = $this->objectCacheFactory->getLocalServerInstance();
+		$objectCache->delete( $objectCache->makeKey( 'mwscomponentdynamicconfig-getActiveConfigs' ) );
+
 		return true;
 	}
 
