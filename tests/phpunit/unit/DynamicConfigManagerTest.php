@@ -1,6 +1,6 @@
 <?php
 
-namespace MWStake\MediaWiki\Component\DynamicConfig\Tests;
+namespace MWStake\MediaWiki\Component\DynamicConfig\Tests\Unit;
 
 use MWStake\MediaWiki\Component\DynamicConfig\DynamicConfigManager;
 use MWStake\MediaWiki\Component\DynamicConfig\IDynamicConfig;
