@@ -27,3 +27,35 @@ jobs:
 
       - name: Run tests
         run: composer test
+
+  phpunit:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.1
+          tools: composer:2
+
+      - name: Clone MediaWiki
+        run: git clone --depth 1 -b REL1_43 https://gerrit.wikimedia.org/r/mediawiki/core.git .
+
+      - name: Install dependencies
+        run: composer update
+
+      - name: Composer require
+        run: |
+          REPO="${{ github.event.repository.name }}"
+          PACKAGE="${REPO#mwstake-}"
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}"
+          composer require "mwstake/${PACKAGE}:dev-${BRANCH}" --prefer-source
+
+      - name: Create LocalSettings.php
+        run: echo '<?php $wgServer = "";' > LocalSettings.php
+
+      - name: Run tests
+        run: |
+          REPO="${{ github.event.repository.name }}"
+          PACKAGE="${REPO#mwstake-}"
+          composer phpunit:unit -- --colors=always "vendor/mwstake/${PACKAGE}/tests/phpunit/unit" --exclude-group Broken,ParserFuzz,Stub
