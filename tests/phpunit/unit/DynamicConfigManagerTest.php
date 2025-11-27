@@ -2,37 +2,54 @@
 
 namespace MWStake\MediaWiki\Component\DynamicConfig\Tests\Unit;
 
+use MediaWikiUnitTestCase;
 use MWStake\MediaWiki\Component\DynamicConfig\DynamicConfigManager;
 use MWStake\MediaWiki\Component\DynamicConfig\IDynamicConfig;
-use PHPUnit\Framework\TestCase;
+use ObjectCacheFactory;
 use Psr\Log\LoggerInterface;
-use Wikimedia\Rdbms\IDatabase;
-use Wikimedia\Rdbms\LoadBalancer;
+use Wikimedia\ObjectCache\EmptyBagOStuff;
+use Wikimedia\Rdbms\DBConnRef;
+use Wikimedia\Rdbms\FakeResultWrapper;
+use Wikimedia\Rdbms\IConnectionProvider;
+use Wikimedia\Rdbms\SelectQueryBuilder;
 
-class DynamicConfigManagerTest extends TestCase {
+/**
+ * @group Database
+ */
+class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
+
+	private const TABLE = 'mwstake_dynamic_config';
+
 	/**
 	 * @covers \MWStake\MediaWiki\Component\DynamicConfig\DynamicConfigManager::getConfigObject
 	 * @covers \MWStake\MediaWiki\Component\DynamicConfig\DynamicConfigManager::applyConfig
 	 * @return void
 	 */
 	public function testApply() {
-		$lbMock = $this->getLBMock();
+		$connectionProviderMock = $this->getConnectionProviderMock();
+		$objectCacheFactory = $this->getObjectCacheFactoryMock();
 		$config1 = $this->getConfigMock();
 		$config1->expects( $this->once() )->method( 'apply' )->with( 'dummy' );
-		$manager = new DynamicConfigManager( $lbMock, $this->getLoggerMock(), [ $config1 ] );
+
+		$manager = new DynamicConfigManager(
+			$connectionProviderMock,
+			$objectCacheFactory,
+			$this->getLoggerMock(),
+			[ $config1 ]
+		);
+
 		$c1 = $manager->getConfigObject( 'config1' );
 		$this->assertInstanceOf( IDynamicConfig::class, $c1 );
 		$c2 = $manager->getConfigObject( 'configInvalid' );
 		$this->assertNull( $c2 );
 
-		$lbMock->getConnection( DB_PRIMARY )->expects( $this->once() )->method( 'select' )->with(
-			'mwstake_dynamic_config',
-			[ 'mwdc_key', 'mwdc_serialized' ],
-			[ 'mwdc_is_active' => 1 ],
-			DynamicConfigManager::class . '::loadConfigs'
-		)->willReturn( [
-			(object)[ 'mwdc_key' => 'config1', 'mwdc_serialized' => 'dummy' ]
-		] );
+		$connectionProviderMock->getReplicaDatabase()->newSelectQueryBuilder()->expects( $this->once() )
+			->method( 'fields' )
+			->with( [ 'mwdc_key', 'mwdc_serialized' ] );
+		$connectionProviderMock->getReplicaDatabase()->newSelectQueryBuilder()->expects( $this->once() )
+			->method( 'where' )
+			->with( [ 'mwdc_is_active' => 1 ] );
+
 		$manager->applyConfig( $c1 );
 	}
 
@@ -41,15 +58,23 @@ class DynamicConfigManagerTest extends TestCase {
 	 * @return void
 	 */
 	public function testStore() {
-		$lbMock = $this->getLBMock();
+		$connectionProviderMock = $this->getConnectionProviderMock();
+		$objectCacheFactory = $this->getObjectCacheFactoryMock();
 		$config = $this->getConfigMock();
 		$config->expects( $this->once() )->method( 'serialize' )->willReturn( 'dummy' );
 
-		$manager = new DynamicConfigManager( $lbMock, $this->getLoggerMock(), [ $config ] );
+		$manager = new DynamicConfigManager(
+			$connectionProviderMock,
+			$objectCacheFactory,
+			$this->getLoggerMock(),
+			[ $config ]
+		);
+
 		$c1 = $manager->getConfigObject( 'config1' );
-		$lbMock->getConnection( DB_PRIMARY )->method( 'timestamp' )->willReturn( '0000' );
-		$lbMock->getConnection( DB_PRIMARY )->expects( $this->once() )->method( 'insert' )->with(
-			'mwstake_dynamic_config',
+
+		$connectionProviderMock->getPrimaryDatabase()->method( 'timestamp' )->willReturn( '0000' );
+		$connectionProviderMock->getPrimaryDatabase()->expects( $this->once() )->method( 'insert' )->with(
+			self::TABLE,
 			[
 				'mwdc_key' => 'config1',
 				'mwdc_serialized' => 'dummy',
@@ -63,26 +88,67 @@ class DynamicConfigManagerTest extends TestCase {
 	}
 
 	/**
-	 * @return IDatabase&\PHPUnit\Framework\MockObject\MockObject
+	 * @return IConnectionProvider&\PHPUnit\Framework\MockObject\MockObject
 	 */
-	public function getDatabaseMock() {
-		$mock = $this->getMockBuilder( IDatabase::class )
+	public function getConnectionProviderMock() {
+		$mock = $this->getMockBuilder( IConnectionProvider::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$mock->method( 'startAtomic' )->willReturn( true );
-		$mock->method( 'endAtomic' )->willReturn( true );
+		$mock->method( 'getPrimaryDatabase' )->willReturn( $this->getDatabaseMock() );
+		$mock->method( 'getReplicaDatabase' )->willReturn( $this->getDatabaseMock() );
 
 		return $mock;
 	}
 
 	/**
-	 * @return LoadBalancer&\PHPUnit\Framework\MockObject\MockObject
+	 * @return ObjectCacheFactory&\PHPUnit\Framework\MockObject\MockObject
 	 */
-	public function getLBMock() {
-		$mock = $this->getMockBuilder( LoadBalancer::class )
+	public function getObjectCacheFactoryMock() {
+		$cache = new EmptyBagOStuff();
+
+		$objectCacheFactoryMock = $this->getMockBuilder( ObjectCacheFactory::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$mock->method( 'getConnection' )->willReturn( $this->getDatabaseMock() );
+		$objectCacheFactoryMock->method( 'getLocalServerInstance' )->willReturn( $cache );
+
+		return $objectCacheFactoryMock;
+	}
+
+	/**
+	 * @return DBConnRef&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	public function getDatabaseMock() {
+		$mock = $this->getMockBuilder( DBConnRef::class )
+			->disableOriginalConstructor()
+			->getMock();
+		$mock->method( 'tableExists' )->willReturn( true );
+
+		$mock->method( 'newSelectQueryBuilder' )->willReturn( $this->getSelectQueryBuilderMock() );
+
+		return $mock;
+	}
+
+	/**
+	 * @return DBConnRef&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	public function getSelectQueryBuilderMock() {
+		$mock = $this->getMockBuilder( SelectQueryBuilder::class )
+			->disableOriginalConstructor()
+			->getMock();
+		$mock->method( 'table' )->willReturn( $mock );
+		$mock->method( 'fields' )->willReturn( $mock );
+		$mock->method( 'where' )->willReturn( $mock );
+		$mock->method( 'caller' )->willReturn( $mock );
+
+		$fakeResultWrapperMock = $this->getMockBuilder( FakeResultWrapper::class )
+			->disableOriginalConstructor()
+			->getMock();
+		$fakeResultWrapperMock = new FakeResultWrapper( [
+			(object)[ 'mwdc_key' => 'config1', 'mwdc_serialized' => 'dummy' ]
+		] );
+
+		$mock->method( 'fetchResultSet' )->willReturn( $fakeResultWrapperMock );
+
 		return $mock;
 	}
 
