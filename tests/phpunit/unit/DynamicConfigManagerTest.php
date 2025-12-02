@@ -140,9 +140,6 @@ class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
 		$mock->method( 'where' )->willReturn( $mock );
 		$mock->method( 'caller' )->willReturn( $mock );
 
-		$fakeResultWrapperMock = $this->getMockBuilder( FakeResultWrapper::class )
-			->disableOriginalConstructor()
-			->getMock();
 		$fakeResultWrapperMock = new FakeResultWrapper( [
 			(object)[ 'mwdc_key' => 'config1', 'mwdc_serialized' => 'dummy' ]
 		] );
