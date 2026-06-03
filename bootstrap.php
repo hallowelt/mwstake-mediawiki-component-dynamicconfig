@@ -16,6 +16,9 @@ Bootstrapper::getInstance()
 		$GLOBALS['wgMWStakeDynamicConfigs'] = [];
 
 		$GLOBALS['wgHooks']['SetupAfterCache'][] = static function () {
+			if ( defined( 'MEDIAWIKI_INSTALL' ) || defined( 'MW_UPDATER' ) ) {
+				return;
+			}
 			$manager = MediaWikiServices::getInstance()->getService( 'MWStakeDynamicConfigManager' );
 			$manager->loadConfigs();
 		};

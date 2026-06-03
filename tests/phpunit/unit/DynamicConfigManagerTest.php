@@ -5,9 +5,9 @@ namespace MWStake\MediaWiki\Component\DynamicConfig\Tests\Unit;
 use MediaWikiUnitTestCase;
 use MWStake\MediaWiki\Component\DynamicConfig\DynamicConfigManager;
 use MWStake\MediaWiki\Component\DynamicConfig\IDynamicConfig;
-use ObjectCacheFactory;
 use Psr\Log\LoggerInterface;
-use Wikimedia\ObjectCache\EmptyBagOStuff;
+use Wikimedia\ObjectCache\HashBagOStuff;
+use Wikimedia\ObjectCache\WANObjectCache;
 use Wikimedia\Rdbms\DBConnRef;
 use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\IConnectionProvider;
@@ -27,13 +27,13 @@ class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
 	 */
 	public function testApply() {
 		$connectionProviderMock = $this->getConnectionProviderMock();
-		$objectCacheFactory = $this->getObjectCacheFactoryMock();
+		$wanCache = $this->getWANObjectCacheMock();
 		$config1 = $this->getConfigMock();
 		$config1->expects( $this->once() )->method( 'apply' )->with( 'dummy' );
 
 		$manager = new DynamicConfigManager(
 			$connectionProviderMock,
-			$objectCacheFactory,
+			$wanCache,
 			$this->getLoggerMock(),
 			[ $config1 ]
 		);
@@ -59,13 +59,13 @@ class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
 	 */
 	public function testStore() {
 		$connectionProviderMock = $this->getConnectionProviderMock();
-		$objectCacheFactory = $this->getObjectCacheFactoryMock();
+		$wanCache = $this->getWANObjectCacheMock();
 		$config = $this->getConfigMock();
 		$config->expects( $this->once() )->method( 'serialize' )->willReturn( 'dummy' );
 
 		$manager = new DynamicConfigManager(
 			$connectionProviderMock,
-			$objectCacheFactory,
+			$wanCache,
 			$this->getLoggerMock(),
 			[ $config ]
 		);
@@ -101,17 +101,10 @@ class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
 	}
 
 	/**
-	 * @return ObjectCacheFactory&\PHPUnit\Framework\MockObject\MockObject
+	 * @return WANObjectCache
 	 */
-	public function getObjectCacheFactoryMock() {
-		$cache = new EmptyBagOStuff();
-
-		$objectCacheFactoryMock = $this->getMockBuilder( ObjectCacheFactory::class )
-			->disableOriginalConstructor()
-			->getMock();
-		$objectCacheFactoryMock->method( 'getLocalServerInstance' )->willReturn( $cache );
-
-		return $objectCacheFactoryMock;
+	public function getWANObjectCacheMock() {
+		return new WANObjectCache( [ 'cache' => new HashBagOStuff() ] );
 	}
 
 	/**
@@ -121,7 +114,6 @@ class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
 		$mock = $this->getMockBuilder( DBConnRef::class )
 			->disableOriginalConstructor()
 			->getMock();
-		$mock->method( 'tableExists' )->willReturn( true );
 
 		$mock->method( 'newSelectQueryBuilder' )->willReturn( $this->getSelectQueryBuilderMock() );
 
