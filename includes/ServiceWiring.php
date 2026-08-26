@@ -36,7 +36,7 @@ return [
 
 		return new DynamicConfigManager(
 			$services->getConnectionProvider(),
-			$services->getObjectCacheFactory(),
+			$services->getMainWANObjectCache(),
 			$logger,
 			$configObjects
 		);

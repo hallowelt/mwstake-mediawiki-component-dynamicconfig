@@ -3,8 +3,8 @@
 namespace MWStake\MediaWiki\Component\DynamicConfig;
 
 use DateTime;
-use ObjectCacheFactory;
 use Psr\Log\LoggerInterface;
+use Wikimedia\ObjectCache\WANObjectCache;
 use Wikimedia\Rdbms\DBConnRef;
 use Wikimedia\Rdbms\IconnectionProvider;
 use Wikimedia\Rdbms\IDatabase;
@@ -12,11 +12,14 @@ use Wikimedia\Rdbms\IDatabase;
 class DynamicConfigManager {
 	private const TABLE = 'mwstake_dynamic_config';
 
+	private const CACHE_KEY_ACTIVE_CONFIGS = 'mwscomponentdynamicconfig-active';
+	private const CACHE_TTL = WANObjectCache::TTL_HOUR;
+
 	/** @var IConnectionProvider */
 	private $connectionProvider;
 
-	/** @var ObjectCacheFactory */
-	private $objectCacheFactory;
+	/** @var WANObjectCache */
+	private $wanCache;
 
 	/** @var LoggerInterface */
 	private $logger;
@@ -32,16 +35,16 @@ class DynamicConfigManager {
 
 	/**
 	 * @param IConnectionProvider $connectionProvider
-	 * @param ObjectCacheFactory $objectCacheFactory
+	 * @param WANObjectCache $wanCache
 	 * @param LoggerInterface $logger
 	 * @param IDynamicConfig[] $configs
 	 */
 	public function __construct(
-		IconnectionProvider $connectionProvider, ObjectCacheFactory $objectCacheFactory,
+		IconnectionProvider $connectionProvider, WANObjectCache $wanCache,
 		LoggerInterface $logger, array $configs
 	) {
 		$this->connectionProvider = $connectionProvider;
-		$this->objectCacheFactory = $objectCacheFactory;
+		$this->wanCache = $wanCache;
 		$this->logger = $logger;
 		foreach ( $configs as $config ) {
 			$this->configs[$config->getKey()] = $config;
@@ -70,8 +73,7 @@ class DynamicConfigManager {
 		$this->store( $config, $serialized, $dbw );
 		$dbw->endAtomic( __METHOD__ );
 
-		$objectCache = $this->objectCacheFactory->getLocalServerInstance();
-		$objectCache->delete( $objectCache->makeKey( 'mwscomponentdynamicconfig-getActiveConfigs' ) );
+		$this->invalidateCache();
 
 		return true;
 	}
@@ -108,19 +110,16 @@ class DynamicConfigManager {
 	 * @return array [ mwdc_key => mwdc_serialized ]
 	 */
 	private function getActiveConfigs() {
-		$objectCache = $this->objectCacheFactory->getLocalServerInstance();
 		$fname = __METHOD__;
+		$cacheKey = $this->wanCache->makeKey( self::CACHE_KEY_ACTIVE_CONFIGS );
 
-		return $objectCache->getWithSetCallback(
-			$objectCache->makeKey( 'mwscomponentdynamicconfig-getActiveConfigs' ),
-			$objectCache::TTL_SECOND,
+		return $this->wanCache->getWithSetCallback(
+			$cacheKey,
+			self::CACHE_TTL,
 			function () use ( $fname ) {
 				$data = [];
 				/** @var DBConnRef $dbr */
 				$dbr = $this->connectionProvider->getReplicaDatabase();
-				if ( !$dbr->tableExists( self::TABLE, $fname ) ) {
-					return $data;
-				}
 
 				$res = $dbr->newSelectQueryBuilder()
 					->table( self::TABLE )
@@ -136,6 +135,14 @@ class DynamicConfigManager {
 				return $data;
 			}
 		);
+	}
+
+	/**
+	 * Invalidate the WAN cache for active configs
+	 */
+	private function invalidateCache(): void {
+		$cacheKey = $this->wanCache->makeKey( self::CACHE_KEY_ACTIVE_CONFIGS );
+		$this->wanCache->delete( $cacheKey );
 	}
 
 	/**
@@ -255,6 +262,8 @@ class DynamicConfigManager {
 			__METHOD__
 		);
 		$dbw->endAtomic( __METHOD__ );
+
+		$this->invalidateCache();
 	}
 
 	/**
@@ -265,11 +274,15 @@ class DynamicConfigManager {
 	 */
 	public function clearConfig( string $key ): bool {
 		$dbw = $this->connectionProvider->getPrimaryDatabase();
-		return $dbw->delete(
+		$result = $dbw->delete(
 			self::TABLE,
 			[ 'mwdc_key' => $key ],
 			__METHOD__
 		);
+
+		$this->invalidateCache();
+
+		return $result;
 	}
 
 	/**
