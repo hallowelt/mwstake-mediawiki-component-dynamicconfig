@@ -134,6 +134,10 @@ class DynamicConfigManager {
 				if ( !$dbr->tableExists( self::TABLE, $fname ) ) {
 					return $data;
 				}
+				if ( !$dbr->fieldExists( self::TABLE, 'mwdc_wiki_id', $fname ) ) {
+					$this->logger->error( 'Table ' . self::TABLE . ' does not have mwdc_wiki_id field' );
+					return $data;
+				}
 
 				$res = $dbr->newSelectQueryBuilder()
 					->table( self::TABLE )
