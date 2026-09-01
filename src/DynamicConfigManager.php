@@ -3,6 +3,7 @@
 namespace MWStake\MediaWiki\Component\DynamicConfig;
 
 use DateTime;
+use MediaWiki\WikiMap\WikiMap;
 use ObjectCacheFactory;
 use Psr\Log\LoggerInterface;
 use Wikimedia\Rdbms\DBConnRef;
@@ -30,6 +31,9 @@ class DynamicConfigManager {
 	/** @var bool */
 	private $loaded = false;
 
+	/** @var string */
+	private string $currentWikiId;
+
 	/**
 	 * @param IConnectionProvider $connectionProvider
 	 * @param ObjectCacheFactory $objectCacheFactory
@@ -46,6 +50,7 @@ class DynamicConfigManager {
 		foreach ( $configs as $config ) {
 			$this->configs[$config->getKey()] = $config;
 		}
+		$this->currentWikiId = WikiMap::getCurrentWikiId();
 	}
 
 	/**
@@ -70,9 +75,6 @@ class DynamicConfigManager {
 		$this->store( $config, $serialized, $dbw );
 		$dbw->endAtomic( __METHOD__ );
 
-		$objectCache = $this->objectCacheFactory->getLocalServerInstance();
-		$objectCache->delete( $objectCache->makeKey( 'mwscomponentdynamicconfig-getActiveConfigs' ) );
-
 		return true;
 	}
 
@@ -84,12 +86,23 @@ class DynamicConfigManager {
 			$activeConfigs = $this->getActiveConfigs();
 			$this->configData = [];
 
-			foreach ( $activeConfigs as $key => $serialized ) {
+			foreach ( $activeConfigs as $configValue ) {
+				$key = $configValue['key'];
 				if ( !isset( $this->configs[$key] ) ) {
 					continue;
 				}
+				$serialized = $configValue['serialized'];
 
 				$config = $this->configs[$key];
+				if ( $config instanceof ILocalDynamicConfig ) {
+					if ( $configValue['wiki_id'] !== $this->currentWikiId ) {
+						// Not for current wiki
+						continue;
+					}
+				} elseif ( $configValue['wiki_id'] !== null ) {
+					// Invalid
+					continue;
+				}
 				$this->configData[$config->getKey()] = [
 					'serialized' => $serialized,
 					'applied' => false,
@@ -124,13 +137,20 @@ class DynamicConfigManager {
 
 				$res = $dbr->newSelectQueryBuilder()
 					->table( self::TABLE )
-					->fields( [ 'mwdc_key', 'mwdc_serialized' ] )
-					->where( [ 'mwdc_is_active' => 1 ] )
+					->fields( [ 'mwdc_key', 'mwdc_serialized', 'mwdc_wiki_id' ] )
+					->where( [
+						'mwdc_is_active' => 1,
+						$dbr->makeList( [ 'mwdc_wiki_id' => $this->currentWikiId, 'mwdc_wiki_id IS NULL' ], LIST_OR )
+					] )
 					->caller( $fname )
 					->fetchResultSet();
 
 				foreach ( $res as $row ) {
-					$data[ $row->mwdc_key ] = $row->mwdc_serialized;
+					$data[] = [
+						'key' => $row->mwdc_key,
+						'serialized' => $row->mwdc_serialized,
+						'wiki_id' => $row->mwdc_wiki_id,
+					];
 				}
 
 				return $data;
@@ -203,7 +223,11 @@ class DynamicConfigManager {
 		$res = $dbr->select(
 			self::TABLE,
 			[ 'mwdc_timestamp AS timestamp' ],
-			[ 'mwdc_key' => $config->getKey(), 'mwdc_is_active' => 0 ],
+			[
+				'mwdc_key' => $config->getKey(),
+				'mwdc_is_active' => 0,
+				$dbr->makeList( [ 'mwdc_wiki_id' => $this->currentWikiId, 'mwdc_wiki_id IS NULL' ], LIST_OR ),
+			],
 			__METHOD__,
 			[ 'ORDER BY' => 'mwdc_timestamp DESC' ]
 		);
@@ -228,14 +252,18 @@ class DynamicConfigManager {
 		}
 		$dbw = $this->connectionProvider->getPrimaryDatabase();
 
+		$selectConds = [
+			'mwdc_key' => $key,
+			'mwdc_is_active' => 0,
+			'mwdc_timestamp' => $timestamp->format( 'YmdHis' )
+		];
+		if ( $config instanceof ILocalDynamicConfig ) {
+			$selectConds['mwdc_wiki_id'] = $this->currentWikiId;
+		}
 		$hasBackup = $dbw->selectField(
 			self::TABLE,
 			'mwdc_key',
-			[
-				'mwdc_key' => $key,
-				'mwdc_is_active' => 0,
-				'mwdc_timestamp' => $timestamp->format( 'YmdHis' )
-			],
+			$selectConds,
 			__METHOD__
 		);
 		if ( !$hasBackup ) {
@@ -243,15 +271,23 @@ class DynamicConfigManager {
 			throw new \Exception( 'Invalid backup timestamp' );
 		}
 		$dbw->startAtomic( __METHOD__ );
+		$deleteConds = [ 'mwdc_key' => $key, 'mwdc_is_active' => 1 ];
+		if ( $config instanceof ILocalDynamicConfig ) {
+			$deleteConds['mwdc_wiki_id'] = $this->currentWikiId;
+		}
 		$dbw->delete(
 			self::TABLE,
-			[ 'mwdc_key' => $key, 'mwdc_is_active' => 1 ],
+			$deleteConds,
 			__METHOD__
 		);
+		$updateConds = [ 'mwdc_key' => $key, 'mwdc_timestamp' => $timestamp->format( 'YmdHis' ) ];
+		if ( $config instanceof ILocalDynamicConfig ) {
+			$updateConds['mwdc_wiki_id'] = $this->currentWikiId;
+		}
 		$dbw->update(
 			self::TABLE,
 			[ 'mwdc_is_active' => 1 ],
-			[ 'mwdc_key' => $key, 'mwdc_timestamp' => $timestamp->format( 'YmdHis' ) ],
+			$updateConds,
 			__METHOD__
 		);
 		$dbw->endAtomic( __METHOD__ );
@@ -267,7 +303,10 @@ class DynamicConfigManager {
 		$dbw = $this->connectionProvider->getPrimaryDatabase();
 		return $dbw->delete(
 			self::TABLE,
-			[ 'mwdc_key' => $key ],
+			[
+				'mwdc_key' => $key,
+				$dbw->makeList( [ 'mwdc_wiki_id' => $this->currentWikiId, 'mwdc_wiki_id IS NULL' ], LIST_OR ),
+			],
 			__METHOD__
 		);
 	}
@@ -297,35 +336,48 @@ class DynamicConfigManager {
 	 * @return void
 	 */
 	private function backup( IDynamicConfig $config, IDatabase $dbw ) {
+		$activeConds = [ 'mwdc_key' => $config->getKey(), 'mwdc_is_active' => 1 ];
+		if ( $config instanceof ILocalDynamicConfig ) {
+			$activeConds['mwdc_wiki_id'] = $this->currentWikiId;
+		}
 		$hasActive = $dbw->selectRow(
 			self::TABLE,
 			[ 'mwdc_key' ],
-			[ 'mwdc_is_active' => 1, 'mwdc_key' => $config->getKey() ],
+			$activeConds,
 			__METHOD__
 		);
 		if ( !$hasActive ) {
 			return;
 		}
+		$updateConds = [ 'mwdc_key' => $hasActive->mwdc_key ];
+		if ( $config instanceof ILocalDynamicConfig ) {
+			$updateConds['mwdc_wiki_id'] = $this->currentWikiId;
+		}
 		$dbw->update(
 			self::TABLE,
 			[ 'mwdc_is_active' => 0 ],
-			[ 'mwdc_key' => $hasActive->mwdc_key ],
+			$updateConds,
 			__METHOD__
 		);
+		$rotationCheckConds = [ 'mwdc_key' => $config->getKey(), 'mwdc_is_active' => 0 ];
+		if ( $config instanceof ILocalDynamicConfig ) {
+			$rotationCheckConds['mwdc_wiki_id'] = $this->currentWikiId;
+		}
 		$rotationCheck = $dbw->selectRow(
 			self::TABLE,
 			[ 'COUNT( mwdc_key ) as backup_count' ],
-			[ 'mwdc_key' => $config->getKey(), 'mwdc_is_active' => 0 ],
+			$rotationCheckConds,
 			__METHOD__,
 			[ 'GROUP BY' => 'mwdc_key' ]
 		);
 		if ( $rotationCheck && (int)$rotationCheck->backup_count > 2 ) {
-			// Abstraction function `delete` does not support ORDER BY and LIMIT
-			$sql = 'DELETE FROM ' . $dbw->tablePrefix() . self::TABLE .
-				' WHERE mwdc_key = ' . $dbw->addQuotes( $config->getKey() )
-				. ' AND mwdc_is_active = 0 ORDER BY mwdc_timestamp ASC LIMIT 1';
-			// Delete oldest backup
-			$dbw->query( $sql, __METHOD__ );
+			$dbw->newDeleteQueryBuilder()
+				->table( self::TABLE )
+				->where( $rotationCheckConds )
+				->orderBy( 'mwdc_timestamp ASC' )
+				->limit( 1 )
+				->caller( __METHOD__ )
+				->execute();
 		}
 	}
 
@@ -339,14 +391,18 @@ class DynamicConfigManager {
 	 * @return void
 	 */
 	private function store( IDynamicConfig $config, string $serialized, IDatabase $dbw ) {
+		$data = [
+			'mwdc_key' => $config->getKey(),
+			'mwdc_serialized' => $serialized,
+			'mwdc_timestamp' => $dbw->timestamp(),
+			'mwdc_is_active' => 1,
+		];
+		if ( $config instanceof ILocalDynamicConfig ) {
+			$data['mwdc_wiki_id'] = $this->currentWikiId;
+		}
 		$dbw->insert(
 			self::TABLE,
-			[
-				'mwdc_key' => $config->getKey(),
-				'mwdc_serialized' => $serialized,
-				'mwdc_timestamp' => $dbw->timestamp(),
-				'mwdc_is_active' => 1,
-			],
+			$data,
 			__METHOD__
 		);
 	}

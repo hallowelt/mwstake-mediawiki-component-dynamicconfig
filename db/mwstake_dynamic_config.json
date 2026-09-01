@@ -32,6 +32,15 @@
 					"notnull": true,
 					"default": 1
 				}
+			},
+			{
+				"name": "mwdc_wiki_id",
+				"type": "string",
+				"options": {
+					"length": 255,
+					"notnull": false,
+					"default": null
+				}
 			}
 		],
 		"indexes": [],
