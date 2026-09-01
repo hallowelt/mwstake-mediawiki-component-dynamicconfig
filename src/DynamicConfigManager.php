@@ -259,6 +259,8 @@ class DynamicConfigManager {
 		];
 		if ( $config instanceof ILocalDynamicConfig ) {
 			$selectConds['mwdc_wiki_id'] = $this->currentWikiId;
+		} else {
+			$selectConds[] = 'mwdc_wiki_id IS NULL';
 		}
 		$hasBackup = $dbw->selectField(
 			self::TABLE,
@@ -274,6 +276,8 @@ class DynamicConfigManager {
 		$deleteConds = [ 'mwdc_key' => $key, 'mwdc_is_active' => 1 ];
 		if ( $config instanceof ILocalDynamicConfig ) {
 			$deleteConds['mwdc_wiki_id'] = $this->currentWikiId;
+		} else {
+			$deleteConds[] = 'mwdc_wiki_id IS NULL';
 		}
 		$dbw->delete(
 			self::TABLE,
@@ -283,6 +287,8 @@ class DynamicConfigManager {
 		$updateConds = [ 'mwdc_key' => $key, 'mwdc_timestamp' => $timestamp->format( 'YmdHis' ) ];
 		if ( $config instanceof ILocalDynamicConfig ) {
 			$updateConds['mwdc_wiki_id'] = $this->currentWikiId;
+		} else {
+			$updateConds[] = 'mwdc_wiki_id IS NULL';
 		}
 		$dbw->update(
 			self::TABLE,
@@ -339,6 +345,8 @@ class DynamicConfigManager {
 		$activeConds = [ 'mwdc_key' => $config->getKey(), 'mwdc_is_active' => 1 ];
 		if ( $config instanceof ILocalDynamicConfig ) {
 			$activeConds['mwdc_wiki_id'] = $this->currentWikiId;
+		} else {
+			$activeConds[] = 'mwdc_wiki_id IS NULL';
 		}
 		$hasActive = $dbw->selectRow(
 			self::TABLE,
@@ -352,6 +360,8 @@ class DynamicConfigManager {
 		$updateConds = [ 'mwdc_key' => $hasActive->mwdc_key ];
 		if ( $config instanceof ILocalDynamicConfig ) {
 			$updateConds['mwdc_wiki_id'] = $this->currentWikiId;
+		} else {
+			$updateConds[] = 'mwdc_wiki_id IS NULL';
 		}
 		$dbw->update(
 			self::TABLE,
@@ -362,6 +372,8 @@ class DynamicConfigManager {
 		$rotationCheckConds = [ 'mwdc_key' => $config->getKey(), 'mwdc_is_active' => 0 ];
 		if ( $config instanceof ILocalDynamicConfig ) {
 			$rotationCheckConds['mwdc_wiki_id'] = $this->currentWikiId;
+		} else {
+			$rotationCheckConds[] = 'mwdc_wiki_id IS NULL';
 		}
 		$rotationCheck = $dbw->selectRow(
 			self::TABLE,

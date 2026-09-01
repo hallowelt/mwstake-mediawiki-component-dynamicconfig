@@ -3,8 +3,10 @@
 namespace MWStake\MediaWiki\Component\DynamicConfig\Tests\Unit;
 
 use MediaWikiUnitTestCase;
+use MediaWiki\WikiMap\WikiMap;
 use MWStake\MediaWiki\Component\DynamicConfig\DynamicConfigManager;
 use MWStake\MediaWiki\Component\DynamicConfig\IDynamicConfig;
+use MWStake\MediaWiki\Component\DynamicConfig\ILocalDynamicConfig;
 use ObjectCacheFactory;
 use Psr\Log\LoggerInterface;
 use Wikimedia\ObjectCache\EmptyBagOStuff;
@@ -30,6 +32,7 @@ class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
 		$objectCacheFactory = $this->getObjectCacheFactoryMock();
 		$config1 = $this->getConfigMock();
 		$config1->expects( $this->once() )->method( 'apply' )->with( 'dummy' );
+		$currentWikiId = WikiMap::getCurrentWikiId();
 
 		$manager = new DynamicConfigManager(
 			$connectionProviderMock,
@@ -43,12 +46,16 @@ class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
 		$c2 = $manager->getConfigObject( 'configInvalid' );
 		$this->assertNull( $c2 );
 
+		$connectionProviderMock->getReplicaDatabase()->expects( $this->once() )
+			->method( 'makeList' )
+			->with( [ 'mwdc_wiki_id' => $currentWikiId, 'mwdc_wiki_id IS NULL' ], LIST_OR )
+			->willReturn( 'wiki-or-null' );
 		$connectionProviderMock->getReplicaDatabase()->newSelectQueryBuilder()->expects( $this->once() )
 			->method( 'fields' )
-			->with( [ 'mwdc_key', 'mwdc_serialized' ] );
+			->with( [ 'mwdc_key', 'mwdc_serialized', 'mwdc_wiki_id' ] );
 		$connectionProviderMock->getReplicaDatabase()->newSelectQueryBuilder()->expects( $this->once() )
 			->method( 'where' )
-			->with( [ 'mwdc_is_active' => 1 ] );
+			->with( [ 'mwdc_is_active' => 1, 'wiki-or-null' ] );
 
 		$manager->applyConfig( $c1 );
 	}
@@ -80,6 +87,42 @@ class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
 				'mwdc_serialized' => 'dummy',
 				'mwdc_is_active' => 1,
 				'mwdc_timestamp' => '0000'
+			],
+			DynamicConfigManager::class . '::store'
+		);
+
+		$manager->storeConfig( $c1 );
+	}
+
+	/**
+	 * @covers \MWStake\MediaWiki\Component\DynamicConfig\DynamicConfigManager::storeConfig
+	 * @return void
+	 */
+	public function testStoreLocal() {
+		$connectionProviderMock = $this->getConnectionProviderMock();
+		$objectCacheFactory = $this->getObjectCacheFactoryMock();
+		$config = $this->getLocalConfigMock();
+		$config->expects( $this->once() )->method( 'serialize' )->willReturn( 'dummy' );
+		$currentWikiId = WikiMap::getCurrentWikiId();
+
+		$manager = new DynamicConfigManager(
+			$connectionProviderMock,
+			$objectCacheFactory,
+			$this->getLoggerMock(),
+			[ $config ]
+		);
+
+		$c1 = $manager->getConfigObject( 'config1' );
+
+		$connectionProviderMock->getPrimaryDatabase()->method( 'timestamp' )->willReturn( '0000' );
+		$connectionProviderMock->getPrimaryDatabase()->expects( $this->once() )->method( 'insert' )->with(
+			self::TABLE,
+			[
+				'mwdc_key' => 'config1',
+				'mwdc_serialized' => 'dummy',
+				'mwdc_is_active' => 1,
+				'mwdc_timestamp' => '0000',
+				'mwdc_wiki_id' => $currentWikiId
 			],
 			DynamicConfigManager::class . '::store'
 		);
@@ -141,7 +184,7 @@ class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
 		$mock->method( 'caller' )->willReturn( $mock );
 
 		$fakeResultWrapperMock = new FakeResultWrapper( [
-			(object)[ 'mwdc_key' => 'config1', 'mwdc_serialized' => 'dummy' ]
+			(object)[ 'mwdc_key' => 'config1', 'mwdc_serialized' => 'dummy', 'mwdc_wiki_id' => null ]
 		] );
 
 		$mock->method( 'fetchResultSet' )->willReturn( $fakeResultWrapperMock );
@@ -163,6 +206,18 @@ class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
 	 */
 	private function getConfigMock() {
 		$config = $this->getMockBuilder( IDynamicConfig::class )
+			->disableOriginalConstructor()
+			->getMock();
+		$config->method( 'getKey' )->willReturn( 'config1' );
+
+		return $config;
+	}
+
+	/**
+	 * @return ILocalDynamicConfig&\PHPUnit\Framework\MockObject\MockObject
+	 */
+	private function getLocalConfigMock() {
+		$config = $this->getMockBuilder( ILocalDynamicConfig::class )
 			->disableOriginalConstructor()
 			->getMock();
 		$config->method( 'getKey' )->willReturn( 'config1' );
