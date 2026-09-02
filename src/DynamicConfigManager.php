@@ -387,13 +387,12 @@ class DynamicConfigManager {
 			[ 'GROUP BY' => 'mwdc_key' ]
 		);
 		if ( $rotationCheck && (int)$rotationCheck->backup_count > 2 ) {
-			$dbw->newDeleteQueryBuilder()
-				->table( self::TABLE )
-				->where( $rotationCheckConds )
-				->orderBy( 'mwdc_timestamp ASC' )
-				->limit( 1 )
-				->caller( __METHOD__ )
-				->execute();
+			// Abstraction function `delete` does not support ORDER BY and LIMIT
+			$sql = 'DELETE FROM ' . $dbw->tablePrefix() . self::TABLE .
+				' WHERE mwdc_key = ' . $dbw->addQuotes( $config->getKey() )
+				. ' AND mwdc_is_active = 0 ORDER BY mwdc_timestamp ASC LIMIT 1';
+			// Delete oldest backup
+			$dbw->query( $sql, __METHOD__ );
 		}
 	}
 
