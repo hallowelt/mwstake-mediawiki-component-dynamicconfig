@@ -165,7 +165,7 @@ class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
 			->disableOriginalConstructor()
 			->getMock();
 		$mock->method( 'tableExists' )->willReturn( true );
-
+		$mock->method( 'fieldExists' )->willReturn( true );
 		$mock->method( 'newSelectQueryBuilder' )->willReturn( $this->getSelectQueryBuilderMock() );
 
 		return $mock;
