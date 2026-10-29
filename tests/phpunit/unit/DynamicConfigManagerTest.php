@@ -2,12 +2,12 @@
 
 namespace MWStake\MediaWiki\Component\DynamicConfig\Tests\Unit;
 
+use MediaWiki\ObjectCache\ObjectCacheFactory;
 use MediaWiki\WikiMap\WikiMap;
 use MediaWikiUnitTestCase;
 use MWStake\MediaWiki\Component\DynamicConfig\DynamicConfigManager;
 use MWStake\MediaWiki\Component\DynamicConfig\IDynamicConfig;
 use MWStake\MediaWiki\Component\DynamicConfig\ILocalDynamicConfig;
-use ObjectCacheFactory;
 use Psr\Log\LoggerInterface;
 use Wikimedia\ObjectCache\EmptyBagOStuff;
 use Wikimedia\Rdbms\DBConnRef;

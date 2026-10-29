@@ -3,8 +3,8 @@
 namespace MWStake\MediaWiki\Component\DynamicConfig;
 
 use DateTime;
+use MediaWiki\ObjectCache\ObjectCacheFactory;
 use MediaWiki\WikiMap\WikiMap;
-use ObjectCacheFactory;
 use Psr\Log\LoggerInterface;
 use Wikimedia\Rdbms\DBConnRef;
 use Wikimedia\Rdbms\IconnectionProvider;
