@@ -6,8 +6,21 @@ It can be used to store any number of configurations, basically everything that 
 core configs, like DB connection and similar.
 
 ## Compatibility
+- \>= `3.0.x` -> MediaWiki 1.47
 - `2.0.x` -> MediaWiki 1.43
 - `1.0.x` -> MediaWiki 1.39
+
+## Use in a MediaWiki extension
+
+Require this component in the `composer.json` of your extension:
+
+```json
+{
+	"require": {
+		"mwstake/mediawiki-component-dynamicconfig": "~3"
+	}
+}
+```
 
 ## Registering configs
 - Implement a class that implements `MWStake\MediaWiki\Component\DynamicConfig\IDynamicConfig` interface.
