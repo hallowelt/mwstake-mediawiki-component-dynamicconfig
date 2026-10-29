@@ -8,7 +8,7 @@ if ( defined( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION' ) ) {
 	return;
 }
 
-define( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION', '2.1.2' );
+define( 'MWSTAKE_MEDIAWIKI_COMPONENT_DYNAMICCONFIG_VERSION', '2.1.3' );
 
 Bootstrapper::getInstance()
 	->register( 'dynamicconfig', static function () {
@@ -18,6 +18,7 @@ Bootstrapper::getInstance()
 		$GLOBALS['wgHooks']['SetupAfterCache'][] = static function () {
 			$manager = MediaWikiServices::getInstance()->getService( 'MWStakeDynamicConfigManager' );
 			$manager->loadConfigs();
+			MediaWikiServices::getInstance()->getHookContainer()->run( 'MWStakeDynamicConfigManagerLoaded' );
 		};
 
 		$GLOBALS['wgExtensionFunctions'][] = static function () {
