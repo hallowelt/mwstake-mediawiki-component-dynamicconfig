@@ -130,7 +130,7 @@ class DynamicConfigManager {
 			function () use ( $fname ) {
 				$data = [];
 				/** @var DBConnRef $dbr */
-				$dbr = $this->connectionProvider->getReplicaDatabase();
+				$dbr = $this->connectionProvider->getPrimaryDatabase();
 				if ( !$dbr->tableExists( self::TABLE, $fname ) ) {
 					return $data;
 				}
@@ -223,7 +223,7 @@ class DynamicConfigManager {
 	 * @return array
 	 */
 	public function listBackups( IDynamicConfig $config ) {
-		$dbr = $this->connectionProvider->getReplicaDatabase();
+		$dbr = $this->connectionProvider->getPrimaryDatabase();
 		$res = $dbr->select(
 			self::TABLE,
 			[ 'mwdc_timestamp AS timestamp' ],
@@ -420,5 +420,9 @@ class DynamicConfigManager {
 			$data,
 			__METHOD__
 		);
+
+		// Clear cache after save
+		$objectCache = $this->objectCacheFactory->getLocalServerInstance();
+		$objectCache->delete( $objectCache->makeKey( 'mwscomponentdynamicconfig-getActiveConfigs' ) );
 	}
 }
