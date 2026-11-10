@@ -46,14 +46,14 @@ class DynamicConfigManagerTest extends MediaWikiUnitTestCase {
 		$c2 = $manager->getConfigObject( 'configInvalid' );
 		$this->assertNull( $c2 );
 
-		$connectionProviderMock->getReplicaDatabase()->expects( $this->once() )
+		$connectionProviderMock->getPrimaryDatabase()->expects( $this->once() )
 			->method( 'makeList' )
 			->with( [ 'mwdc_wiki_id' => $currentWikiId, 'mwdc_wiki_id IS NULL' ], LIST_OR )
 			->willReturn( 'wiki-or-null' );
-		$connectionProviderMock->getReplicaDatabase()->newSelectQueryBuilder()->expects( $this->once() )
+		$connectionProviderMock->getPrimaryDatabase()->newSelectQueryBuilder()->expects( $this->once() )
 			->method( 'fields' )
 			->with( [ 'mwdc_key', 'mwdc_serialized', 'mwdc_wiki_id' ] );
-		$connectionProviderMock->getReplicaDatabase()->newSelectQueryBuilder()->expects( $this->once() )
+		$connectionProviderMock->getPrimaryDatabase()->newSelectQueryBuilder()->expects( $this->once() )
 			->method( 'where' )
 			->with( [ 'mwdc_is_active' => 1, 'wiki-or-null' ] );
 
