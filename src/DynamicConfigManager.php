@@ -12,6 +12,7 @@ use Wikimedia\Rdbms\IDatabase;
 
 class DynamicConfigManager {
 	private const TABLE = 'mwstake_dynamic_config';
+	private const ACTIVE_CONFIGS_CACHE_KEY = 'mwscomponentdynamicconfig-getActiveConfigs';
 
 	/** @var IConnectionProvider */
 	private $connectionProvider;
@@ -74,6 +75,11 @@ class DynamicConfigManager {
 		$this->backup( $config, $dbw );
 		$this->store( $config, $serialized, $dbw );
 		$dbw->endAtomic( __METHOD__ );
+		// Purge only once the write is committed, otherwise a concurrent request
+		// could re-populate the cache with the old values in the meantime
+		$dbw->onTransactionCommitOrIdle( function () {
+			$this->purgeActiveConfigsCache();
+		}, __METHOD__ );
 
 		return true;
 	}
@@ -125,12 +131,12 @@ class DynamicConfigManager {
 		$fname = __METHOD__;
 
 		return $objectCache->getWithSetCallback(
-			$objectCache->makeKey( 'mwscomponentdynamicconfig-getActiveConfigs' ),
+			$objectCache->makeKey( self::ACTIVE_CONFIGS_CACHE_KEY ),
 			$objectCache::TTL_SECOND,
 			function () use ( $fname ) {
 				$data = [];
 				/** @var DBConnRef $dbr */
-				$dbr = $this->connectionProvider->getReplicaDatabase();
+				$dbr = $this->connectionProvider->getPrimaryDatabase();
 				if ( !$dbr->tableExists( self::TABLE, $fname ) ) {
 					return $data;
 				}
@@ -223,7 +229,7 @@ class DynamicConfigManager {
 	 * @return array
 	 */
 	public function listBackups( IDynamicConfig $config ) {
-		$dbr = $this->connectionProvider->getReplicaDatabase();
+		$dbr = $this->connectionProvider->getPrimaryDatabase();
 		$res = $dbr->select(
 			self::TABLE,
 			[ 'mwdc_timestamp AS timestamp' ],
@@ -420,5 +426,13 @@ class DynamicConfigManager {
 			$data,
 			__METHOD__
 		);
+	}
+
+	/**
+	 * @return void
+	 */
+	private function purgeActiveConfigsCache() {
+		$objectCache = $this->objectCacheFactory->getLocalServerInstance();
+		$objectCache->delete( $objectCache->makeKey( self::ACTIVE_CONFIGS_CACHE_KEY ) );
 	}
 }
