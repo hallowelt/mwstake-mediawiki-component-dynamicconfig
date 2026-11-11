@@ -12,6 +12,7 @@ use Wikimedia\Rdbms\IDatabase;
 
 class DynamicConfigManager {
 	private const TABLE = 'mwstake_dynamic_config';
+	private const ACTIVE_CONFIGS_CACHE_KEY = 'mwscomponentdynamicconfig-getActiveConfigs';
 
 	/** @var IConnectionProvider */
 	private $connectionProvider;
@@ -74,6 +75,11 @@ class DynamicConfigManager {
 		$this->backup( $config, $dbw );
 		$this->store( $config, $serialized, $dbw );
 		$dbw->endAtomic( __METHOD__ );
+		// Purge only once the write is committed, otherwise a concurrent request
+		// could re-populate the cache with the old values in the meantime
+		$dbw->onTransactionCommitOrIdle( function () {
+			$this->purgeActiveConfigsCache();
+		}, __METHOD__ );
 
 		return true;
 	}
@@ -125,7 +131,7 @@ class DynamicConfigManager {
 		$fname = __METHOD__;
 
 		return $objectCache->getWithSetCallback(
-			$objectCache->makeKey( 'mwscomponentdynamicconfig-getActiveConfigs' ),
+			$objectCache->makeKey( self::ACTIVE_CONFIGS_CACHE_KEY ),
 			$objectCache::TTL_SECOND,
 			function () use ( $fname ) {
 				$data = [];
@@ -424,5 +430,13 @@ class DynamicConfigManager {
 		// Clear cache after save
 		$objectCache = $this->objectCacheFactory->getLocalServerInstance();
 		$objectCache->delete( $objectCache->makeKey( 'mwscomponentdynamicconfig-getActiveConfigs' ) );
+	}
+
+	/**
+	 * @return void
+	 */
+	private function purgeActiveConfigsCache() {
+		$objectCache = $this->objectCacheFactory->getLocalServerInstance();
+		$objectCache->delete( $objectCache->makeKey( self::ACTIVE_CONFIGS_CACHE_KEY ) );
 	}
 }
