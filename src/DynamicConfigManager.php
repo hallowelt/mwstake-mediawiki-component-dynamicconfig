@@ -243,7 +243,7 @@ class DynamicConfigManager {
 		);
 		$backups = [];
 		foreach ( $res as $row ) {
-			$backups[] = DateTime::createFromFormat( 'YmdHis', $row->timestamp );
+			$backups[] = DateTime::createFromFormat( 'YmdHis', wfTimestamp( TS_MW, $row->timestamp ) );
 		}
 		return $backups;
 	}
@@ -265,7 +265,7 @@ class DynamicConfigManager {
 		$selectConds = [
 			'mwdc_key' => $key,
 			'mwdc_is_active' => 0,
-			'mwdc_timestamp' => $timestamp->format( 'YmdHis' )
+			'mwdc_timestamp' => $dbw->timestamp( $timestamp->format( 'YmdHis' ) )
 		];
 		if ( $config instanceof ILocalDynamicConfig ) {
 			$selectConds['mwdc_wiki_id'] = $this->currentWikiId;
@@ -294,7 +294,7 @@ class DynamicConfigManager {
 			$deleteConds,
 			__METHOD__
 		);
-		$updateConds = [ 'mwdc_key' => $key, 'mwdc_timestamp' => $timestamp->format( 'YmdHis' ) ];
+		$updateConds = [ 'mwdc_key' => $key, 'mwdc_timestamp' => $dbw->timestamp( $timestamp->format( 'YmdHis' ) ) ];
 		if ( $config instanceof ILocalDynamicConfig ) {
 			$updateConds['mwdc_wiki_id'] = $this->currentWikiId;
 		} else {
